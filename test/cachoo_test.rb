@@ -2,6 +2,8 @@ require 'cutest'
 require 'cachoo'
 
 setup do
+  Cachoo.for = 1
+
   class Test
     extend Cachoo
 
@@ -31,8 +33,6 @@ setup do
     end
     cachoo :kuak, for: 2
   end
-
-  Cachoo.for = 1
 end
 
 test "should be included" do
