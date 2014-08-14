@@ -13,7 +13,7 @@ module Cachoo
   end
 
   def self.for
-    @_cache_time ||= 60
+    @_cache_time ||= 5
   end
 
   def cachoo(*method_names)
