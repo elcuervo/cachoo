@@ -1,48 +1,45 @@
+require 'cachoo/concurrent_hash'
+
 module Cachoo
-  MUTEX = Mutex.new
-  CACHE = Hash.new do |h,k|
-    h[k] = Hash.new { |h,k| h[k] = nil }
-  end
-
   def self.for=(seconds)
-    @_cache_time = seconds
-  end
-
-  def self.sync(&block)
-    MUTEX.synchronize(&block)
+    @cachoo_cache_time = seconds
   end
 
   def self.for
-    @_cache_time ||= 5
+    @cachoo_cache_time ||= 5
   end
 
-  def cachoo(*method_names)
-    options = method_names.find { |i| i.is_a?(Hash) && method_names.delete(i) } || {}
-    expires_in = options.fetch(:for, Cachoo.for)
+  def create_cached_methods_module(method_names, expires_in)
+    Module.new do
+      def cachoo_instance_cache
+        @cachoo_instance_cache ||= ConcurrentHash.new
+      end
 
-    Array(method_names).each do |method_name|
-      method_sym = :"__uncached_#{method_name}"
+      method_names.each do |method_name|
+        define_method(method_name) do |*args, &block|
+          sig = [method_name, args, block].hash
 
-      alias_method method_sym, method_name
-      remove_method method_name
+          if cachoo_instance_cache.has_key?(sig)
+            cachoo_instance_cache[sig]
+          else
+            super(*args, &block).tap do |ret|
+              cachoo_instance_cache[sig] = ret
 
-      define_method(method_name) do |*args|
-        Thread.new do
-          sleep expires_in
-          Cachoo.sync { CACHE.delete(method_name) }
-        end
-
-        sig = args.map(&:hash)
-        c = CACHE[method_name]
-
-        return Cachoo.sync { CACHE[method_name][:return] } if c[:sig] == sig
-
-        Cachoo.sync do
-          ret = method(method_sym).call(*args)
-          CACHE[method_name] = { sig: sig, return: ret }
-          ret
+              Thread.new do
+                sleep(expires_in)
+                cachoo_instance_cache.delete(sig)
+              end
+            end
+          end
         end
       end
     end
+  end
+
+  def cachoo(*method_names, for: Cachoo.for)
+    # 'for' is a reserved word in ruby so we can only get it through the binding
+    expires_in = binding.local_variable_get(:for)
+    cached_methods_module = create_cached_methods_module(method_names, expires_in)
+    prepend(cached_methods_module)
   end
 end
