@@ -19,11 +19,9 @@ module Cachoo
         define_method(method_name) do |*args, &block|
           sig = [method_name, args, block].hash
 
-          if cachoo_instance_cache.has_key?(sig)
-            cachoo_instance_cache[sig]
-          else
-            super(*args, &block).tap do |ret|
-              cachoo_instance_cache[sig] = ret
+          cachoo_instance_cache.fetch(sig) do
+            super(*args, &block).tap do |result|
+              cachoo_instance_cache[sig] = result
 
               Thread.new do
                 sleep(expires_in)
